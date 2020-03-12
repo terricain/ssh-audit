@@ -113,15 +113,17 @@ func NewExecSnooper() *ExecSnooper {
 
 // Close Closes filewatcher
 func (e ExecSnooper) Close() {
+	log.Debug("Stopping execsnooper")
 	e.StopChannel <- true
 	// Wait for BPF to be closed
 	select {
 	case <-e.StopChannel:
 		break
-	case <-time.After(2 * time.Second):
+	case <-time.After(10 * time.Second):
+		log.Warning("Execsnooper failed to stop gracefully ")
 		break
 	}
-
+	log.Debug("Stopped execsnooper")
 }
 
 // Run Runs filewatcher
@@ -219,7 +221,7 @@ func (e ExecSnooper) run(matchChannel chan<- string) {
 
 			// By now we should emit json blob
 			jsonEvent := events.CommandEvent{
-				Time:      time.Now().Format(time.RFC3339),
+				Time:      time.Now().UnixNano(),
 				Event:     "session.command",
 				Hostname:  hostname,
 				Username:  username,
@@ -235,7 +237,6 @@ func (e ExecSnooper) run(matchChannel chan<- string) {
 			if err != nil {
 				log.WithError(err).Error(fmt.Sprintf("Failed to convert SSH Stop Event: %#v", jsonEvent))
 			} else {
-				fmt.Println("finished")
 				select {
 				case matchChannel <- string(jsonString):
 					log.Debug("Command: " + string(jsonString))

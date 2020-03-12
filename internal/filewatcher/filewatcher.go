@@ -52,8 +52,18 @@ func NewFileWatcher() *FileWatcher {
 
 // Close Closes filewatcher
 func (f FileWatcher) Close() {
+	log.Debug("Stopping filewatcher")
 	f.StopChannel <- true
-	<-f.StopChannel
+
+	select {
+	case <-f.StopChannel:
+		break
+	case <-time.After(5 * time.Second):
+		log.Warning("Filewatcher failed to stop gracefully ")
+		break
+	}
+
+	log.Debug("Stopped filewatcher")
 }
 
 // Run Runs filewatcher
@@ -91,7 +101,7 @@ Loop:
 				pidInt, _ := strconv.ParseUint(sshStart.PID, 10, 64)
 
 				jsonEvent := events.SSHStartEvent{
-					Time:           time.Now().Format(time.RFC3339),
+					Time:           time.Now().UnixNano(),
 					Event:          "session.start",
 					Hostname:       hostname,
 					Username:       sshStart.User,
@@ -126,7 +136,7 @@ Loop:
 				}
 
 				jsonEvent := events.SSHEndEvent{
-					Time:      time.Now().Format(time.RFC3339),
+					Time:      time.Now().UnixNano(),
 					Event:     "session.end",
 					Hostname:  hostname,
 					Username:  sshEnd.User,

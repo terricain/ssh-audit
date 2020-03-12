@@ -2,7 +2,7 @@ package events
 
 // CommandEvent JSON Command event
 type CommandEvent struct {
-	Time      string `json:"timestamp"`
+	Time      int64 `json:"timestamp"`
 	Event     string `json:"event"`
 	Hostname  string `json:"hostname"`
 	Username  string `json:"username"`
@@ -15,7 +15,7 @@ type CommandEvent struct {
 
 // SSHStartEvent JSON SSH Start event
 type SSHStartEvent struct {
-	Time           string `json:"timestamp"`
+	Time           int64 `json:"timestamp"`
 	Event          string `json:"event"`
 	Hostname       string `json:"hostname"`
 	Username       string `json:"username"`
@@ -28,7 +28,7 @@ type SSHStartEvent struct {
 
 // SSHEndEvent JSON SSH End event
 type SSHEndEvent struct {
-	Time      string `json:"timestamp"`
+	Time      int64 `json:"timestamp"`
 	Event     string `json:"event"`
 	Hostname  string `json:"hostname"`
 	Username  string `json:"username"`
