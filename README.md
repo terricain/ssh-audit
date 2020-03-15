@@ -7,6 +7,8 @@ also includes the SSH fingerprint used for the connection, useful when you want 
 
 This is my first decent Go project so it'll probably have some issues. 
 
+Is a work in progress
+
 ## Usage
 
 ```
