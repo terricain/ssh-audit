@@ -49,7 +49,7 @@ rm -rf bcc
 apt remove -y bison build-essential cmake flex git libedit-dev llvm-6.0-dev libclang-6.0-dev zlib1g-dev libelf-dev
 
 # Download ssh-audit
-wget url
+wget -o ssh-audit https://github.com/terrycain/ssh-audit/releases/download/v1.0.0/ssh-audit.linux-amd64
 install -v -m 755 -o root -g root ssh-audit /usr/local/bin/ssh-audit
 cat <<EOF > /etc/systemd/system/ssh-audit.service
 [Unit]
