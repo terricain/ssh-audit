@@ -170,86 +170,7 @@ func (e ExecSnooper) run(matchChannel chan<- string) {
 		os.Exit(1)
 	}
 
-	go func() {
-		log.Info("Started goroutine to get BPF events")
-
-		// Map of PID => [arg1, arg2, arg3]
-		pidMap := make(map[uint64][]string)
-
-		for {
-			data := <-channel
-
-			// Convert bytes into event struct
-			var event execveEvent
-			err := binary.Read(bytes.NewBuffer(data), bpf.GetHostByteOrder(), &event)
-			if err != nil {
-				log.WithError(err).Error("Failed to decode received data from BPF")
-				continue
-			}
-
-			argv := C.GoString((*C.char)(unsafe.Pointer(&event.Argv)))
-			// comm := C.GoString((*C.char)(unsafe.Pointer(&event.Command)))
-
-			// If we get .... then its the last arg
-			// If we get ... then there were more args than we have recorded but is a final event
-			if argv != "...." {
-				// Part of args
-				argSlice, keyExists := pidMap[event.Pid]
-				if !keyExists {
-					argSlice = make([]string, 0)
-				}
-
-				argSlice = append(argSlice, argv)
-				pidMap[event.Pid] = argSlice
-
-				// If the arg is not a final event, then loop again
-				if argv != "..." && argv != "...." {
-					continue
-				}
-			}
-
-			argSlice, keyExists := pidMap[event.Pid]
-			if !keyExists {
-				log.Debug("Somehow process argv doesnt exist, should not happen")
-				argSlice = make([]string, 0)
-			}
-
-			username := "unknown"
-			if user, err := user.LookupId(strconv.FormatUint(uint64(event.UID), 10)); err == nil {
-				username = user.Username
-			}
-
-			// By now we should emit json blob
-			jsonEvent := events.CommandEvent{
-				Time:      time.Now().UnixNano(),
-				Event:     "session.command",
-				Hostname:  hostname,
-				Username:  username,
-				UID:       int64(event.UID),
-				SessionID: int64(event.SessionID),
-				// Command:   "(" + comm + ") " + strings.Join(argSlice, " "),
-				Command:   strings.Join(argSlice, " "),
-				Pid:       event.Pid,
-				ParentPid: event.ParentPid,
-			}
-			jsonString, err := json.Marshal(jsonEvent)
-
-			if err != nil {
-				log.WithError(err).Error(fmt.Sprintf("Failed to convert SSH Stop Event: %#v", jsonEvent))
-			} else {
-				select {
-				case matchChannel <- string(jsonString):
-					log.Debug("Command: " + string(jsonString))
-				case <-time.After(5 * time.Second):
-					log.Warn("Failed to emit event for 5 seconds, giving up")
-				}
-
-			}
-
-			// We're done with this PID now, get rid
-			delete(pidMap, event.Pid)
-		}
-	}()
+	go EBPFDataHandler(channel, hostname, matchChannel)
 
 	// Start perfmap, the stop perfmap is inside the goroutine
 	perfMap.Start()
@@ -260,4 +181,85 @@ func (e ExecSnooper) run(matchChannel chan<- string) {
 	log.Debug("Stopped BPF")
 	e.StopChannel <- true
 	log.Debug("End of BPF Func")
+}
+
+func EBPFDataHandler(channel chan[]byte, hostname string, matchChannel chan<- string) {
+	log.Info("Started goroutine to get BPF events")
+
+	// Map of PID => [arg1, arg2, arg3]
+	pidMap := make(map[uint64][]string)
+
+	for {
+		data := <-channel
+
+		// Convert bytes into event struct
+		var event execveEvent
+		err := binary.Read(bytes.NewBuffer(data), bpf.GetHostByteOrder(), &event)
+		if err != nil {
+			log.WithError(err).Error("Failed to decode received data from BPF")
+			continue
+		}
+
+		argv := C.GoString((*C.char)(unsafe.Pointer(&event.Argv)))
+		// comm := C.GoString((*C.char)(unsafe.Pointer(&event.Command)))
+
+		// If we get .... then its the last arg
+		// If we get ... then there were more args than we have recorded but is a final event
+		if argv != "...." {
+			// Part of args
+			argSlice, keyExists := pidMap[event.Pid]
+			if !keyExists {
+				argSlice = make([]string, 0)
+			}
+
+			argSlice = append(argSlice, argv)
+			pidMap[event.Pid] = argSlice
+
+			// If the arg is not a final event, then loop again
+			if argv != "..." && argv != "...." {
+				continue
+			}
+		}
+
+		argSlice, keyExists := pidMap[event.Pid]
+		if !keyExists {
+			log.Debug("Somehow process argv doesnt exist, should not happen")
+			argSlice = make([]string, 0)
+		}
+
+		username := "unknown"
+		if userobj, err := user.LookupId(strconv.FormatUint(uint64(event.UID), 10)); err == nil {
+			username = userobj.Username
+		}
+
+		// By now we should emit json blob
+		jsonEvent := events.CommandEvent{
+			Time:      time.Now().UnixNano(),
+			Event:     "session.command",
+			Hostname:  hostname,
+			Username:  username,
+			UID:       int64(event.UID),
+			SessionID: int64(event.SessionID),
+			// Command:   "(" + comm + ") " + strings.Join(argSlice, " "),
+			Command:   strings.Join(argSlice, " "),
+			Pid:       event.Pid,
+			ParentPid: event.ParentPid,
+		}
+		jsonString, err := json.Marshal(jsonEvent)
+
+		if err != nil {
+			log.WithError(err).Error(fmt.Sprintf("Failed to convert SSH Stop Event: %#v", jsonEvent))
+		} else {
+			select {
+			case matchChannel <- string(jsonString):
+				log.Debug("Command: " + string(jsonString))
+			case <-time.After(5 * time.Second):
+				log.Warn("Failed to emit event for 5 seconds, giving up")
+			}
+
+		}
+
+		// We're done with this PID now, get rid
+		delete(pidMap, event.Pid)
+	}
 }
